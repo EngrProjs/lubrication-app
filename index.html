@@ -1,0 +1,927 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>Lubrication</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Oswald:wght@400;500;600;700&family=Inter:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<style>
+  :root{
+    --paper:#F1F3F0; --panel:#FFFFFF; --panel-2:#F7F8F6;
+    --ink:#1D2622; --ink-dim:#6B7570; --line:#DADFD9; --line-strong:#C3C9C1;
+    --amber:#BE6F27; --amber-tint:#F3E3D2;
+    --steel:#2F6B7A; --steel-tint:#DCEAEC;
+    --red:#A6392E; --red-tint:#F3DEDA;
+    --green:#3E7A54; --green-tint:#DEEDE2;
+    --radius:2px;
+  }
+  *{box-sizing:border-box;} html,body{margin:0;padding:0;}
+  body{
+    background:var(--paper);
+    background-image:linear-gradient(rgba(46,63,55,0.035) 1px, transparent 1px), linear-gradient(90deg, rgba(46,63,55,0.035) 1px, transparent 1px);
+    background-size:26px 26px;
+    color:var(--ink); font-family:'Inter',sans-serif; min-height:100vh;
+  }
+  h1,h2,h3,.brand,.tab,.stat-num{ font-family:'Oswald',sans-serif; letter-spacing:0.01em; }
+  .mono{ font-family:'IBM Plex Mono',monospace; }
+  button{ -webkit-tap-highlight-color:transparent; }
+
+  /* ---------- Auth screen ---------- */
+  #auth-screen{ min-height:100vh; display:flex; align-items:center; justify-content:center; padding:20px; }
+  .auth-card{ width:100%; max-width:380px; background:var(--panel); border:1px solid var(--line); border-radius:var(--radius); padding:30px 28px; }
+  .auth-brand{ display:flex; align-items:center; gap:8px; font-size:1.3rem; font-weight:600; margin-bottom:6px; }
+  .auth-brand .mark{ width:16px; height:16px; border:2px solid var(--amber); border-radius:50%; position:relative; flex-shrink:0;}
+  .auth-brand .mark::after{ content:""; position:absolute; top:3px; left:3px; width:6px; height:6px; background:var(--amber); border-radius:50%;}
+  .auth-sub{ font-size:0.84rem; color:var(--ink-dim); margin-bottom:22px; }
+  .auth-field{ display:flex; flex-direction:column; gap:5px; margin-bottom:14px; }
+  .auth-field label{ font-size:0.76rem; color:var(--ink-dim); }
+  .auth-msg{ font-size:0.82rem; padding:10px 12px; border-radius:var(--radius); margin-bottom:14px; }
+  .auth-msg.error{ background:var(--red-tint); color:var(--red); }
+  .auth-msg.ok{ background:var(--green-tint); color:var(--green); }
+  .auth-toggle{ text-align:center; margin-top:16px; font-size:0.84rem; color:var(--ink-dim); }
+  .auth-toggle a{ color:var(--steel); cursor:pointer; text-decoration:underline; }
+
+  /* ---------- App shell ---------- */
+  .app{ display:none; min-height:100vh; }
+  .app.active{ display:flex; }
+  .sidebar{ width:226px; flex-shrink:0; background:var(--panel); border-right:1px solid var(--line); display:flex; flex-direction:column; padding:22px 0; }
+  .brand{ font-size:1.2rem; font-weight:600; padding:0 20px 4px 20px; display:flex; align-items:center; gap:8px;}
+  .brand .mark{ width:16px; height:16px; border:2px solid var(--amber); border-radius:50%; position:relative; flex-shrink:0;}
+  .brand .mark::after{ content:""; position:absolute; top:3px; left:3px; width:6px; height:6px; background:var(--amber); border-radius:50%;}
+  .brand-sub{ padding:0 20px 20px 20px; font-size:0.76rem; color:var(--ink-dim); border-bottom:1px solid var(--line); margin-bottom:14px;}
+  nav{ display:flex; flex-direction:column; gap:2px; padding:0 10px; }
+  .tab{ all:unset; cursor:pointer; display:flex; align-items:center; gap:10px; padding:11px 12px; font-size:0.9rem; font-weight:500; color:var(--ink-dim); border-radius:var(--radius); transition:background .15s,color .15s;}
+  .tab:hover{ background:var(--panel-2); color:var(--ink); }
+  .tab.active{ background:var(--amber-tint); color:var(--amber); }
+  .tab .num{ margin-left:auto; font-family:'IBM Plex Mono',monospace; font-size:0.7rem; color:var(--ink-dim); background:var(--panel-2); padding:1px 6px; border-radius:9px;}
+  .tab.active .num{ color:var(--amber); background:#fff; }
+  .sidebar-foot{ margin-top:auto; padding:14px 20px 0 20px; border-top:1px solid var(--line); font-size:0.76rem; color:var(--ink-dim); line-height:1.5;}
+  .who{ font-weight:600; color:var(--ink); font-size:0.82rem; }
+  .role-badge{ display:inline-block; font-size:0.68rem; text-transform:uppercase; letter-spacing:0.04em; padding:2px 7px; border-radius:9px; background:var(--steel-tint); color:var(--steel); margin-top:4px;}
+  #sign-out{ all:unset; cursor:pointer; color:var(--red); font-size:0.78rem; margin-top:10px; display:inline-block; }
+
+  main{ flex:1; padding:34px 40px 60px 40px; max-width:1220px; min-width:0; }
+  .view{ display:none; } .view.active{ display:block; }
+  .view-head{ display:flex; justify-content:space-between; align-items:flex-end; margin-bottom:24px; gap:20px; flex-wrap:wrap;}
+  .view-head h1{ font-size:1.55rem; font-weight:600; margin:0 0 4px 0; }
+  .view-head p{ margin:0; color:var(--ink-dim); font-size:0.88rem; max-width:56ch;}
+
+  button.primary{ all:unset; cursor:pointer; background:var(--amber); color:#fff; font-weight:600; font-size:0.86rem; padding:11px 18px; border-radius:var(--radius); transition:filter .15s;}
+  button.primary:hover{ filter:brightness(1.08); }
+  button.ghost{ all:unset; cursor:pointer; color:var(--ink-dim); font-size:0.84rem; padding:10px 14px; border:1px solid var(--line-strong); border-radius:var(--radius); transition:border-color .15s,color .15s;}
+  button.ghost:hover{ border-color:var(--steel); color:var(--steel); }
+  button.small{ all:unset; cursor:pointer; font-size:0.78rem; color:var(--steel); padding:6px 9px; border-radius:var(--radius);}
+  button.small:hover{ background:var(--steel-tint); }
+  button.small.danger{ color:var(--red); } button.small.danger:hover{ background:var(--red-tint); }
+
+  .subtabs{ display:flex; gap:4px; margin-bottom:20px; border-bottom:1px solid var(--line); overflow-x:auto;}
+  .subtab{ all:unset; cursor:pointer; padding:9px 4px; margin-right:20px; font-size:0.88rem; font-weight:500; color:var(--ink-dim); border-bottom:2px solid transparent; white-space:nowrap;}
+  .subtab.active{ color:var(--ink); border-bottom-color:var(--amber); }
+  .subview{ display:none; } .subview.active{ display:block; }
+
+  .stat-strip{ display:grid; grid-template-columns:repeat(4,1fr); gap:1px; background:var(--line); border:1px solid var(--line); margin-bottom:28px;}
+  .stat{ background:var(--panel); padding:17px 19px; }
+  .stat-label{ font-size:0.72rem; color:var(--ink-dim); margin-bottom:7px;}
+  .stat-num{ font-size:1.8rem; font-weight:600; line-height:1;}
+  .stat-num.warn{ color:var(--red);} .stat-num.ok{ color:var(--green);} .stat-num.info{ color:var(--steel);}
+  .stat-sub{ font-size:0.73rem; color:var(--ink-dim); margin-top:6px;}
+
+  .panel{ background:var(--panel); border:1px solid var(--line); border-radius:var(--radius); padding:22px; margin-bottom:20px;}
+  .panel h2{ font-size:1rem; font-weight:600; margin:0 0 15px 0; }
+  .panel-head{ display:flex; justify-content:space-between; align-items:center; margin-bottom:15px; flex-wrap:wrap; gap:10px;}
+  .panel-head h2{ margin:0; }
+
+  .form-grid{ display:grid; grid-template-columns:repeat(3,1fr); gap:14px 18px;}
+  .form-grid.two{ grid-template-columns:repeat(2,1fr);}
+  .field{ display:flex; flex-direction:column; gap:5px; }
+  .field.span2{ grid-column:span 2;} .field.span3{ grid-column:1/-1;}
+  label{ font-size:0.74rem; color:var(--ink-dim); }
+  input, select, textarea{ background:#fff; border:1px solid var(--line-strong); color:var(--ink); padding:10px 10px; font-size:0.9rem; font-family:'Inter',sans-serif; border-radius:var(--radius); width:100%;}
+  input:focus, select:focus, textarea:focus{ outline:none; border-color:var(--steel); }
+  textarea{ resize:vertical; min-height:50px; }
+  .form-actions{ display:flex; gap:10px; margin-top:18px; flex-wrap:wrap;}
+  .hint{ font-size:0.76rem; color:var(--ink-dim); margin-top:4px;}
+  .readonly-note{ font-size:0.8rem; color:var(--ink-dim); background:var(--panel-2); padding:12px 14px; border-radius:var(--radius); border:1px solid var(--line);}
+
+  table{ width:100%; border-collapse:collapse; font-size:0.84rem;}
+  thead th{ text-align:left; font-weight:500; font-size:0.7rem; color:var(--ink-dim); padding:8px 10px; border-bottom:1px solid var(--line-strong);}
+  tbody td{ padding:10px 10px; border-bottom:1px solid var(--line); vertical-align:top;}
+  tbody tr:hover{ background:var(--panel-2); }
+  .table-scroll{ overflow-x:auto; }
+  .tag{ font-family:'IBM Plex Mono',monospace; font-size:0.75rem; color:var(--steel); background:var(--steel-tint); padding:2px 7px; border-radius:2px; white-space:nowrap;}
+  .pill{ display:inline-block; font-size:0.72rem; padding:2px 8px; border-radius:9px; font-weight:500; white-space:nowrap;}
+  .pill.overdue,.pill.critical{ background:var(--red-tint); color:var(--red); }
+  .pill.soon,.pill.caution{ background:var(--amber-tint); color:var(--amber); }
+  .pill.ok,.pill.normal{ background:var(--green-tint); color:var(--green); }
+  .pill.none{ background:var(--panel-2); color:var(--ink-dim); }
+  .pill.admin{ background:var(--red-tint); color:var(--red); }
+  .pill.supervisor{ background:var(--amber-tint); color:var(--amber); }
+  .pill.technician{ background:var(--steel-tint); color:var(--steel); }
+  .pill.viewer{ background:var(--panel-2); color:var(--ink-dim); }
+
+  .empty{ text-align:center; padding:44px 20px; color:var(--ink-dim); }
+  .empty .big{ font-family:'Oswald',sans-serif; font-size:1.02rem; color:var(--ink); margin-bottom:6px;}
+
+  .eq-card{ border:1px solid var(--line); border-radius:var(--radius); margin-bottom:12px; overflow:hidden; background:var(--panel);}
+  .eq-head{ display:flex; align-items:center; gap:12px; padding:14px 18px; cursor:pointer; flex-wrap:wrap;}
+  .eq-head:hover{ background:var(--panel-2); }
+  .eq-head .chev{ color:var(--ink-dim); font-size:0.8rem; width:14px; }
+  .eq-head .title{ font-weight:600; font-size:0.95rem; }
+  .eq-head .meta{ font-size:0.78rem; color:var(--ink-dim); }
+  .eq-head .spacer{ flex:1; }
+  .eq-body{ display:none; border-top:1px solid var(--line); padding:16px 18px; background:var(--panel-2);}
+  .eq-body.open{ display:block; }
+  .comp-row{ display:flex; align-items:center; gap:10px; padding:9px 0; border-bottom:1px solid var(--line); flex-wrap:wrap;}
+  .comp-row:last-child{ border-bottom:none; }
+  .comp-main{ flex:1; min-width:180px;}
+  .comp-type{ font-weight:500; font-size:0.86rem; }
+  .comp-detail{ font-size:0.76rem; color:var(--ink-dim); }
+  .add-comp-toggle{ margin-top:10px; }
+
+  .bar-list{ display:flex; flex-direction:column; gap:9px; }
+  .bar-row{ display:grid; grid-template-columns:150px 1fr 44px; align-items:center; gap:12px;}
+  .bar-name{ font-size:0.82rem; }
+  .bar-track{ background:var(--panel-2); border-radius:2px; height:8px; overflow:hidden; border:1px solid var(--line);}
+  .bar-fill{ background:var(--steel); height:100%; }
+  .bar-count{ font-family:'IBM Plex Mono',monospace; font-size:0.76rem; color:var(--ink-dim); text-align:right;}
+
+  .route-card{ border:1px solid var(--line); border-radius:var(--radius); padding:16px 18px; margin-bottom:12px; }
+  .route-title{ font-weight:600; font-size:0.92rem; margin-bottom:8px; display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px;}
+  .checklist{ max-height:220px; overflow-y:auto; border:1px solid var(--line); padding:10px; border-radius:var(--radius); background:#fff;}
+  .checklist label{ display:flex; align-items:center; gap:8px; font-size:0.82rem; color:var(--ink); padding:5px 0; }
+
+  .userrow{ display:flex; align-items:center; gap:14px; padding:12px 0; border-bottom:1px solid var(--line); flex-wrap:wrap;}
+  .userrow:last-child{ border-bottom:none; }
+  .userrow .u-email{ font-weight:500; font-size:0.86rem; min-width:200px;}
+  .userrow .u-name{ font-size:0.78rem; color:var(--ink-dim); }
+  .userrow select{ max-width:150px; }
+
+  .loading{ text-align:center; padding:60px; color:var(--ink-dim); }
+
+  @media (max-width:900px){
+    .app{ flex-direction:column; }
+    .sidebar{ width:100%; padding:12px; border-right:none; border-bottom:1px solid var(--line); }
+    .brand-sub{ display:none; }
+    .brand{ padding:0 8px 10px 8px; }
+    nav{ flex-direction:row; padding:0 4px; overflow-x:auto; gap:4px; }
+    .tab{ flex-shrink:0; padding:9px 10px; font-size:0.82rem; }
+    .tab .num{ display:none; }
+    .sidebar-foot{ display:none; }
+    main{ padding:20px 14px 40px 14px; }
+    .stat-strip{ grid-template-columns:repeat(2,1fr);}
+    .form-grid,.form-grid.two{ grid-template-columns:1fr;}
+    .field.span2,.field.span3{ grid-column:1;}
+    .view-head{ align-items:flex-start; }
+    button.primary, button.ghost{ padding:12px 16px; }
+  }
+</style>
+</head>
+<body>
+
+<!-- ============ AUTH SCREEN ============ -->
+<div id="auth-screen">
+  <div class="auth-card">
+    <div class="auth-brand"><span class="mark"></span>Lubrication</div>
+    <div class="auth-sub" id="auth-sub">Sign in to your team's lubrication log.</div>
+    <div id="auth-msg-box"></div>
+
+    <form id="login-form">
+      <div class="auth-field"><label>Email</label><input type="email" id="li-email" required autocomplete="email"></div>
+      <div class="auth-field"><label>Password</label><input type="password" id="li-password" required autocomplete="current-password"></div>
+      <button type="submit" class="primary" style="width:100%;">Sign in</button>
+    </form>
+
+    <form id="signup-form" style="display:none;">
+      <div class="auth-field"><label>Full name</label><input type="text" id="su-name" required autocomplete="name"></div>
+      <div class="auth-field"><label>Email</label><input type="email" id="su-email" required autocomplete="email"></div>
+      <div class="auth-field"><label>Password</label><input type="password" id="su-password" required minlength="6" autocomplete="new-password"></div>
+      <button type="submit" class="primary" style="width:100%;">Create account</button>
+      <div class="hint" style="margin-top:10px;">New accounts start as <strong>Viewer</strong>. An Admin can upgrade your role afterward under Users.</div>
+    </form>
+
+    <div class="auth-toggle" id="auth-toggle">Don't have an account? <a id="show-signup">Sign up</a></div>
+  </div>
+</div>
+
+<!-- ============ APP ============ -->
+<div class="app" id="app">
+  <aside class="sidebar">
+    <div class="brand"><span class="mark"></span>Lubrication</div>
+    <div class="brand-sub">Equipment lubrication &amp; PM tracking</div>
+    <nav>
+      <button class="tab active" data-view="dashboard">Dashboard <span class="num" id="nc-dash"></span></button>
+      <button class="tab" data-view="equipment">Equipment <span class="num" id="nc-equip"></span></button>
+      <button class="tab" data-view="schedule">Schedule</button>
+      <button class="tab" data-view="log">Log service</button>
+      <button class="tab" data-view="oil">Oil analysis</button>
+      <button class="tab" data-view="reports">Reports</button>
+      <button class="tab" data-view="users" id="users-tab" style="display:none;">Users</button>
+    </nav>
+    <div class="sidebar-foot">
+      <div class="who" id="who-name"></div>
+      <div id="who-email" class="mono" style="font-size:0.72rem;"></div>
+      <span class="role-badge" id="who-role"></span><br>
+      <a id="sign-out">Sign out</a>
+    </div>
+  </aside>
+
+  <main>
+    <!-- DASHBOARD -->
+    <section class="view active" id="view-dashboard">
+      <div class="view-head">
+        <div><h1>Dashboard</h1><p>Live status across all equipment and lube points.</p></div>
+        <button class="primary" data-goto="log">+ Log service</button>
+      </div>
+      <div class="stat-strip">
+        <div class="stat"><div class="stat-label">Overdue</div><div class="stat-num warn" id="d-overdue">0</div><div class="stat-sub">Past due date/hours</div></div>
+        <div class="stat"><div class="stat-label">Due soon</div><div class="stat-num" id="d-soon">0</div><div class="stat-sub">Within 7 days / threshold hrs</div></div>
+        <div class="stat"><div class="stat-label">Oil flags</div><div class="stat-num warn" id="d-oilflags">0</div><div class="stat-sub">Caution or critical samples</div></div>
+        <div class="stat"><div class="stat-label">Serviced (30d)</div><div class="stat-num ok" id="d-recent">0</div><div class="stat-sub">Completed lubrication jobs</div></div>
+      </div>
+      <div class="panel"><h2>Needs attention</h2>
+        <div class="table-scroll"><table id="d-attention-table"><thead><tr><th>Equipment</th><th>Component</th><th>Lubricant</th><th>Status</th><th>Due</th></tr></thead><tbody id="d-attention-body"></tbody></table></div>
+        <div class="empty" id="d-attention-empty" style="display:none;"><div class="big">Nothing due</div>Every lube point is within schedule.</div>
+      </div>
+      <div class="panel"><h2>Recent oil analysis flags</h2>
+        <div class="table-scroll"><table id="d-oil-table"><thead><tr><th>Date</th><th>Equipment</th><th>Component</th><th>Flag</th><th>Notes</th></tr></thead><tbody id="d-oil-body"></tbody></table></div>
+        <div class="empty" id="d-oil-empty" style="display:none;"><div class="big">No flags</div>All recent oil samples came back normal.</div>
+      </div>
+      <div class="panel"><h2>Recent activity</h2>
+        <div class="table-scroll"><table id="d-recent-table"><thead><tr><th>Date</th><th>Equipment</th><th>Component</th><th>Qty</th><th>Technician</th></tr></thead><tbody id="d-recent-body"></tbody></table></div>
+        <div class="empty" id="d-recent-empty" style="display:none;"><div class="big">No records yet</div>Log your first service to see activity here.</div>
+      </div>
+    </section>
+
+    <!-- EQUIPMENT -->
+    <section class="view" id="view-equipment">
+      <div class="view-head">
+        <div><h1>Equipment</h1><p>Machines and their individual lube points — gearboxes, bearings, couplings, and more.</p></div>
+        <button class="primary role-edit" id="eq-add-toggle">+ Add equipment</button>
+      </div>
+      <div class="panel role-edit" id="eq-add-panel" style="display:none;">
+        <h2>New equipment</h2>
+        <form id="eq-form">
+          <div class="form-grid">
+            <div class="field"><label>Equipment tag</label><input type="text" id="eq-tag" placeholder="e.g. PUMP-014" required></div>
+            <div class="field"><label>Equipment name</label><input type="text" id="eq-name" placeholder="e.g. Feed Pump #2" required></div>
+            <div class="field"><label>Location</label><input type="text" id="eq-location" placeholder="e.g. Building 3, Line 2"></div>
+            <div class="field"><label>Criticality</label><select id="eq-criticality"><option>Standard</option><option>Important</option><option>Critical</option></select></div>
+            <div class="field"><label>Current run hours (optional)</label><input type="number" id="eq-hours" min="0" step="1" placeholder="e.g. 4200"></div>
+          </div>
+          <div class="form-actions"><button type="submit" class="primary">Save equipment</button><button type="button" class="ghost" id="eq-cancel">Cancel</button></div>
+        </form>
+      </div>
+      <div id="eq-list"></div>
+      <div class="empty" id="eq-empty" style="display:none;"><div class="big">No equipment yet</div>Add your first machine to start tracking lube points.</div>
+    </section>
+
+    <!-- SCHEDULE -->
+    <section class="view" id="view-schedule">
+      <div class="view-head"><div><h1>Schedule</h1><p>Every lube point ranked by urgency, or grouped into technician routes.</p></div></div>
+      <div class="subtabs">
+        <button class="subtab active" data-sub="sch-upcoming">Upcoming</button>
+        <button class="subtab" data-sub="sch-routes">Routes</button>
+      </div>
+      <div class="subview active" id="sch-upcoming">
+        <div class="panel">
+          <div class="panel-head"><h2>All lube points by urgency</h2>
+            <select id="sch-filter" style="max-width:200px;">
+              <option value="all">All statuses</option><option value="overdue">Overdue</option>
+              <option value="soon">Due soon</option><option value="ok">On schedule</option><option value="none">Not yet serviced</option>
+            </select>
+          </div>
+          <div class="table-scroll"><table id="sch-table"><thead><tr><th>Equipment</th><th>Component</th><th>Lubricant</th><th>Frequency</th><th>Status</th><th>Due</th><th></th></tr></thead><tbody id="sch-body"></tbody></table></div>
+          <div class="empty" id="sch-empty" style="display:none;"><div class="big">No components yet</div>Add components under Equipment first.</div>
+        </div>
+      </div>
+      <div class="subview" id="sch-routes">
+        <div class="panel role-edit" id="route-form-panel">
+          <div class="panel-head"><h2>New route</h2></div>
+          <div class="field span3" style="margin-bottom:12px;"><label>Route name</label><input type="text" id="route-name" placeholder="e.g. North wing weekly grease route"></div>
+          <label style="font-size:0.74rem; color:var(--ink-dim); display:block; margin-bottom:6px;">Select components</label>
+          <div class="checklist" id="route-checklist"></div>
+          <div class="form-actions"><button class="primary" id="route-save">Save route</button></div>
+        </div>
+        <div id="route-list"></div>
+        <div class="empty" id="route-empty" style="display:none;"><div class="big">No routes yet</div>Group components into a named route above.</div>
+      </div>
+    </section>
+
+    <!-- LOG SERVICE -->
+    <section class="view" id="view-log">
+      <div class="view-head"><div><h1>Log service</h1><p>Record a completed lubrication job against a lube point.</p></div></div>
+      <div class="panel role-log" id="log-panel">
+        <form id="log-form">
+          <div class="form-grid two">
+            <div class="field"><label>Equipment</label><select id="lg-equip" required><option value="">Select equipment...</option></select></div>
+            <div class="field"><label>Component</label><select id="lg-comp" required><option value="">Select equipment first</option></select></div>
+          </div>
+          <div class="panel" id="lg-comp-info" style="display:none; margin:16px 0 0 0; background:var(--panel-2);">
+            <div style="font-size:0.82rem; color:var(--ink-dim);" id="lg-comp-info-text"></div>
+          </div>
+          <div class="form-grid" style="margin-top:16px;">
+            <div class="field"><label>Date performed</label><input type="date" id="lg-date" required></div>
+            <div class="field" id="lg-hours-field" style="display:none;"><label>Run hours at service</label><input type="number" id="lg-hours" min="0" step="1"></div>
+            <div class="field"><label>Technician</label><input type="text" id="lg-tech" placeholder="Name"></div>
+            <div class="field"><label>Quantity used</label><input type="number" id="lg-qty" min="0" step="0.01"></div>
+            <div class="field"><label>Unit</label><select id="lg-unit"><option>L</option><option>mL</option><option>gal</option><option>qt</option><option>oz</option><option>kg</option><option>g</option><option>shots</option></select></div>
+            <div class="field"><label>Method</label><select id="lg-method"><option>Manual grease gun</option><option>Oil top-off</option><option>Full oil change</option><option>Auto-lubricator refill</option><option>Sample &amp; inspect only</option><option>Other</option></select></div>
+            <div class="field span3"><label>Notes</label><textarea id="lg-notes" placeholder="Condition observed, leaks, anomalies..."></textarea></div>
+          </div>
+          <div class="form-actions"><button type="submit" class="primary">Save record</button><button type="button" class="ghost" id="lg-clear">Clear</button></div>
+        </form>
+      </div>
+      <div class="panel readonly-note role-view-only" id="log-readonly" style="display:none;">Your account has read-only access and can't log new service records.</div>
+    </section>
+
+    <!-- OIL ANALYSIS -->
+    <section class="view" id="view-oil">
+      <div class="view-head"><div><h1>Oil analysis</h1><p>Sample results and condition trending for oil-filled lube points.</p></div></div>
+      <div class="panel role-log" id="oil-panel">
+        <h2>New sample</h2>
+        <form id="oil-form">
+          <div class="form-grid two">
+            <div class="field"><label>Equipment</label><select id="ol-equip" required><option value="">Select equipment...</option></select></div>
+            <div class="field"><label>Component</label><select id="ol-comp" required><option value="">Select equipment first</option></select></div>
+          </div>
+          <div class="form-grid" style="margin-top:14px;">
+            <div class="field"><label>Sample date</label><input type="date" id="ol-date" required></div>
+            <div class="field"><label>Lab</label><input type="text" id="ol-lab" placeholder="e.g. In-house / Polaris"></div>
+            <div class="field"><label>Overall flag</label><select id="ol-flag"><option>Normal</option><option>Caution</option><option>Critical</option></select></div>
+            <div class="field"><label>Viscosity (cSt)</label><input type="number" id="ol-visc" step="0.1"></div>
+            <div class="field"><label>Water content (%)</label><input type="number" id="ol-water" step="0.01"></div>
+            <div class="field"><label>Particle count (ISO code)</label><input type="text" id="ol-particle" placeholder="e.g. 18/16/13"></div>
+            <div class="field"><label>TAN</label><input type="number" id="ol-tan" step="0.01"></div>
+            <div class="field"><label>TBN</label><input type="number" id="ol-tbn" step="0.01"></div>
+            <div class="field span3"><label>Notes</label><textarea id="ol-notes" placeholder="Lab commentary, recommended action..."></textarea></div>
+          </div>
+          <div class="form-actions"><button type="submit" class="primary">Save sample</button><button type="button" class="ghost" id="ol-clear">Clear</button></div>
+        </form>
+      </div>
+      <div class="panel readonly-note role-view-only" id="oil-readonly" style="display:none;">Your account has read-only access and can't log new oil samples.</div>
+      <div class="panel"><div class="panel-head"><h2>Sample history</h2>
+        <select id="ol-filter" style="max-width:180px;"><option value="all">All flags</option><option>Normal</option><option>Caution</option><option>Critical</option></select></div>
+        <div class="table-scroll"><table id="ol-table"><thead><tr><th>Date</th><th>Equipment</th><th>Component</th><th>Flag</th><th>Visc.</th><th>Water %</th><th>Particle</th><th>Notes</th></tr></thead><tbody id="ol-body"></tbody></table></div>
+        <div class="empty" id="ol-empty" style="display:none;"><div class="big">No samples yet</div>Log an oil sample above to start trending condition.</div>
+      </div>
+    </section>
+
+    <!-- REPORTS -->
+    <section class="view" id="view-reports">
+      <div class="view-head"><div><h1>Reports</h1><p>Roll service and sample records up by date range.</p></div></div>
+      <div class="panel">
+        <div class="form-grid two" style="align-items:flex-end;">
+          <div class="field"><label>From</label><input type="date" id="rp-from"></div>
+          <div class="field"><label>To</label><input type="date" id="rp-to"></div>
+        </div>
+        <div class="form-actions">
+          <button class="ghost" id="rp-run">Apply range</button>
+          <button class="ghost" id="rp-reset">All time</button>
+          <button class="primary" id="rp-export" style="margin-left:auto;">Export CSV</button>
+        </div>
+      </div>
+      <div class="stat-strip">
+        <div class="stat"><div class="stat-label">Service records in range</div><div class="stat-num" id="rp-count">0</div></div>
+        <div class="stat"><div class="stat-label">Equipment serviced</div><div class="stat-num" id="rp-equip">0</div></div>
+        <div class="stat"><div class="stat-label">Oil samples in range</div><div class="stat-num info" id="rp-samples">0</div></div>
+        <div class="stat"><div class="stat-label">Schedule compliance (now)</div><div class="stat-num ok" id="rp-compliance">0%</div><div class="stat-sub">Share of lube points not overdue</div></div>
+      </div>
+      <div class="panel"><h2>By lubricant type</h2><div class="bar-list" id="rp-bar-lube"></div></div>
+      <div class="panel"><h2>By equipment</h2><div class="bar-list" id="rp-bar-equip"></div></div>
+    </section>
+
+    <!-- USERS (admin only) -->
+    <section class="view" id="view-users">
+      <div class="view-head"><div><h1>Users</h1><p>Everyone who has signed up, and what they're allowed to do.</p></div></div>
+      <div class="panel">
+        <div class="hint" style="margin-bottom:14px;">
+          Admin — full access, manages users · Supervisor — full access to equipment/logs · Technician — logs service &amp; oil samples · Viewer — read-only.
+        </div>
+        <div id="users-list"></div>
+      </div>
+    </section>
+  </main>
+</div>
+
+<script>
+(function(){
+  // ====================================================================
+  // FILL THESE IN after creating your Supabase project
+  // (Project Settings → API → Project URL / anon public key)
+  // ====================================================================
+  const SUPABASE_URL = sb_publishable_kQNKkU_AnXXTUzGRoxaPRQ_chWaric5;
+  const SUPABASE_ANON_KEY = eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inh3bXJqbmdrdHVheWt3dXJpeWN0Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODk0NjI5NTcsImV4cCI6MjEwNTAzODk1N30.KZ2QJQEvVox6g06yxayX00dDZpQKCgqmLYuwdI8mWwg;
+  // ====================================================================
+
+  const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+  const COMPONENT_TYPES = ['Gearbox','Bearing DE','Bearing NDE','Coupling','Chain Drive','Hydraulic Reservoir','Motor Bearing','Fan Bearing','Pump Seal','Compressor Crankcase','Other'];
+
+  let profile = null; // { id, email, full_name, role }
+  let state = { equipment: [], components: [], serviceLogs: [], oilSamples: [], routes: [], users: [] };
+  const expanded = new Set();
+
+  const $ = s => document.querySelector(s);
+  const $$ = s => Array.from(document.querySelectorAll(s));
+  const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+  const todayISO = () => new Date().toISOString().slice(0,10);
+  function fmtDate(iso){ if(!iso) return '—'; const d = new Date(iso+'T00:00:00'); return d.toLocaleDateString(undefined,{year:'numeric',month:'short',day:'numeric'}); }
+  function addDays(iso, n){ const d = new Date(iso+'T00:00:00'); d.setDate(d.getDate()+Number(n)); return d.toISOString().slice(0,10); }
+  function daysUntil(iso){ const now = new Date(todayISO()+'T00:00:00'); const d = new Date(iso+'T00:00:00'); return Math.round((d-now)/86400000); }
+
+  function canEdit(){ return profile && (profile.role === 'admin' || profile.role === 'supervisor'); }
+  function canLog(){ return profile && (canEdit() || profile.role === 'technician'); }
+  function isAdmin(){ return profile && profile.role === 'admin'; }
+
+  // ---------------- AUTH ----------------
+  $('#show-signup').addEventListener('click', () => {
+    $('#login-form').style.display = 'none'; $('#signup-form').style.display = 'block';
+    $('#auth-toggle').innerHTML = 'Already have an account? <a id="show-login">Sign in</a>';
+    $('#show-login').addEventListener('click', showLogin);
+    $('#auth-sub').textContent = 'Create your account.';
+  });
+  function showLogin(){
+    $('#login-form').style.display = 'block'; $('#signup-form').style.display = 'none';
+    $('#auth-toggle').innerHTML = "Don't have an account? <a id=\"show-signup2\">Sign up</a>";
+    $('#show-signup2').addEventListener('click', () => $('#show-signup').click());
+    $('#auth-sub').textContent = "Sign in to your team's lubrication log.";
+  }
+  function authMsg(text, type){
+    $('#auth-msg-box').innerHTML = text ? `<div class="auth-msg ${type}">${esc(text)}</div>` : '';
+  }
+
+  $('#login-form').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    authMsg('', '');
+    const { error } = await sb.auth.signInWithPassword({ email: $('#li-email').value.trim(), password: $('#li-password').value });
+    if(error){ authMsg(error.message, 'error'); return; }
+    await afterLogin();
+  });
+  $('#signup-form').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    authMsg('', '');
+    const { data, error } = await sb.auth.signUp({
+      email: $('#su-email').value.trim(), password: $('#su-password').value,
+      options: { data: { full_name: $('#su-name').value.trim() } }
+    });
+    if(error){ authMsg(error.message, 'error'); return; }
+    if(!data.session){
+      authMsg('Account created. Check your email to confirm, then sign in.', 'ok');
+      showLogin();
+      return;
+    }
+    await afterLogin();
+  });
+  $('#sign-out').addEventListener('click', async () => {
+    await sb.auth.signOut();
+    location.reload();
+  });
+
+  async function afterLogin(){
+    const { data: { user } } = await sb.auth.getUser();
+    if(!user) return;
+    let { data: prof } = await sb.from('profiles').select('*').eq('id', user.id).single();
+    profile = prof;
+    if(!profile){ authMsg('Your account has no profile yet — try refreshing in a moment.', 'error'); return; }
+    $('#auth-screen').style.display = 'none';
+    $('#app').classList.add('active');
+    $('#who-name').textContent = profile.full_name || profile.email;
+    $('#who-email').textContent = profile.email;
+    $('#who-role').textContent = profile.role;
+    $('#who-role').className = 'role-badge pill ' + profile.role;
+    $('#users-tab').style.display = isAdmin() ? 'flex' : 'none';
+    applyRoleGating();
+    await loadAll();
+    render();
+  }
+
+  function applyRoleGating(){
+    $$('.role-edit').forEach(el => el.style.display = canEdit() ? '' : 'none');
+    $('#log-panel').style.display = canLog() ? 'block' : 'none';
+    $('#log-readonly').style.display = canLog() ? 'none' : 'block';
+    $('#oil-panel').style.display = canLog() ? 'block' : 'none';
+    $('#oil-readonly').style.display = canLog() ? 'none' : 'block';
+  }
+
+  // ---------------- DATA LOADING ----------------
+  async function loadAll(){
+    const [eq, comp, logs, samples, routes, routeComps] = await Promise.all([
+      sb.from('equipment').select('*').order('tag'),
+      sb.from('components').select('*'),
+      sb.from('service_logs').select('*'),
+      sb.from('oil_samples').select('*'),
+      sb.from('routes').select('*'),
+      sb.from('route_components').select('*')
+    ]);
+    state.equipment = eq.data || [];
+    state.components = comp.data || [];
+    state.serviceLogs = logs.data || [];
+    state.oilSamples = samples.data || [];
+    state.routes = (routes.data || []).map(r => ({ ...r, componentIds: (routeComps.data||[]).filter(rc => rc.route_id === r.id).map(rc => rc.component_id) }));
+    if(isAdmin()){
+      const { data: users } = await sb.from('profiles').select('*').order('email');
+      state.users = users || [];
+    }
+  }
+
+  function equipmentById(id){ return state.equipment.find(e => e.id === id); }
+  function componentsFor(equipId){ return state.components.filter(c => c.equipment_id === equipId); }
+  function componentById(id){ return state.components.find(c => c.id === id); }
+
+  function dueInfo(comp){
+    const eq = equipmentById(comp.equipment_id);
+    if(comp.freq_type === 'days'){
+      if(!comp.last_service_date) return { status:'none', label:'Not yet serviced' };
+      const due = addDays(comp.last_service_date, comp.freq_value);
+      const d = daysUntil(due);
+      const status = d < 0 ? 'overdue' : d <= 7 ? 'soon' : 'ok';
+      return { status, label: fmtDate(due), sortKey: due };
+    } else {
+      if(comp.last_service_hours == null) return { status:'none', label:'Not yet serviced' };
+      const dueHours = comp.last_service_hours + comp.freq_value;
+      const current = (eq && eq.current_hours) || 0;
+      const remaining = dueHours - current;
+      const threshold = Math.max(10, comp.freq_value * 0.1);
+      const status = remaining < 0 ? 'overdue' : remaining <= threshold ? 'soon' : 'ok';
+      const label = remaining < 0 ? Math.abs(Math.round(remaining)) + ' hrs overdue (due at ' + dueHours + ')' : Math.round(remaining) + ' hrs left (due at ' + dueHours + ')';
+      return { status, label, sortKey: dueHours - current };
+    }
+  }
+  function statusPill(status){ const map={overdue:'Overdue',soon:'Due soon',ok:'On schedule',none:'Not serviced'}; return `<span class="pill ${status}">${map[status]}</span>`; }
+  function flagPill(flag){ return `<span class="pill ${flag.toLowerCase()}">${esc(flag)}</span>`; }
+
+  // ---------------- NAV ----------------
+  function goto(view){
+    $$('.tab').forEach(t => t.classList.toggle('active', t.dataset.view === view));
+    $$('.view').forEach(v => v.classList.toggle('active', v.id === 'view-' + view));
+    window.scrollTo(0,0);
+  }
+  $$('.tab').forEach(t => t.addEventListener('click', () => goto(t.dataset.view)));
+  $$('[data-goto]').forEach(b => b.addEventListener('click', () => goto(b.dataset.goto)));
+  $$('.subtab').forEach(t => t.addEventListener('click', () => {
+    $$('.subtab').forEach(s => s.classList.toggle('active', s === t));
+    $$('.subview').forEach(v => v.classList.toggle('active', v.id === t.dataset.sub));
+  }));
+
+  function fillEquipSelect(sel){
+    sel.innerHTML = '<option value="">Select equipment...</option>' + state.equipment.map(e => `<option value="${e.id}">${esc(e.tag)} — ${esc(e.name)}</option>`).join('');
+  }
+  function fillCompSelect(sel, equipId, placeholder){
+    if(!equipId){ sel.innerHTML = `<option value="">${placeholder}</option>`; return; }
+    sel.innerHTML = '<option value="">Select component...</option>' + componentsFor(equipId).map(c => `<option value="${c.id}">${esc(c.type)} — ${esc(c.lubricant)}</option>`).join('');
+  }
+
+  // ---------------- EQUIPMENT ----------------
+  $('#eq-add-toggle').addEventListener('click', () => { $('#eq-add-panel').style.display = 'block'; });
+  $('#eq-cancel').addEventListener('click', () => { $('#eq-form').reset(); $('#eq-add-panel').style.display = 'none'; });
+  $('#eq-form').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const { error } = await sb.from('equipment').insert({
+      tag: $('#eq-tag').value.trim(), name: $('#eq-name').value.trim(),
+      location: $('#eq-location').value.trim(), criticality: $('#eq-criticality').value,
+      current_hours: $('#eq-hours').value ? parseFloat($('#eq-hours').value) : null
+    });
+    if(error){ alert(error.message); return; }
+    $('#eq-form').reset(); $('#eq-add-panel').style.display = 'none';
+    await loadAll(); render();
+  });
+
+  function renderEquipment(){
+    const list = $('#eq-list');
+    $('#eq-empty').style.display = state.equipment.length ? 'none' : 'block';
+    list.innerHTML = state.equipment.map(eq => {
+      const comps = componentsFor(eq.id);
+      const statuses = comps.map(c => dueInfo(c).status);
+      const worst = statuses.includes('overdue') ? 'overdue' : statuses.includes('soon') ? 'soon' : statuses.includes('none') ? 'none' : 'ok';
+      const isOpen = expanded.has(eq.id);
+      return `
+        <div class="eq-card">
+          <div class="eq-head" data-toggle="${eq.id}">
+            <span class="chev">${isOpen ? '▾' : '▸'}</span>
+            <span class="tag">${esc(eq.tag)}</span>
+            <span class="title">${esc(eq.name)}</span>
+            <span class="meta">${esc(eq.location) || '—'}</span>
+            <span class="spacer"></span>
+            ${eq.current_hours != null ? `<span class="meta mono">${eq.current_hours} hrs</span>` : ''}
+            <span class="pill ${eq.criticality === 'Critical' ? 'overdue' : eq.criticality === 'Important' ? 'soon' : 'none'}">${esc(eq.criticality)}</span>
+            ${comps.length ? statusPill(worst) : '<span class="meta">No components</span>'}
+          </div>
+          <div class="eq-body ${isOpen ? 'open' : ''}" id="eq-body-${eq.id}">
+            ${comps.length ? comps.map(c => {
+              const info = dueInfo(c);
+              return `<div class="comp-row">
+                <div class="comp-main">
+                  <div class="comp-type">${esc(c.type)} <span class="mono" style="color:var(--ink-dim); font-weight:400;">· ${esc(c.lubricant)}</span></div>
+                  <div class="comp-detail">${c.qty != null ? c.qty + ' ' + esc(c.unit) + ' · ' : ''}${esc(c.method||'')} · every ${c.freq_value} ${c.freq_type === 'days' ? 'days' : 'run hrs'}</div>
+                </div>
+                ${statusPill(info.status)}
+                <div class="comp-detail" style="min-width:150px; text-align:right;">${info.label}</div>
+                ${canEdit() ? `<button class="small danger" data-del-comp="${c.id}">Delete</button>` : ''}
+              </div>`;
+            }).join('') : `<div class="hint">No lube points added yet.</div>`}
+            ${canEdit() ? `
+            <button class="ghost add-comp-toggle" data-add-comp="${eq.id}">+ Add component</button>
+            <div id="comp-form-${eq.id}" style="display:none; margin-top:14px;">
+              <div class="form-grid two">
+                <div class="field"><label>Component type</label><select class="c-type">${COMPONENT_TYPES.map(t => `<option>${t}</option>`).join('')}</select></div>
+                <div class="field"><label>Lubricant type/grade</label><input type="text" class="c-lube" placeholder="e.g. ISO VG 68 gear oil"></div>
+                <div class="field"><label>Quantity per service</label><input type="number" class="c-qty" min="0" step="0.01"></div>
+                <div class="field"><label>Unit</label><select class="c-unit"><option>L</option><option>mL</option><option>gal</option><option>qt</option><option>oz</option><option>kg</option><option>g</option><option>shots</option></select></div>
+                <div class="field"><label>Method</label><select class="c-method"><option>Manual grease gun</option><option>Oil top-off</option><option>Full oil change</option><option>Auto-lubricator refill</option><option>Sample &amp; inspect only</option><option>Other</option></select></div>
+                <div class="field"><label>Frequency basis</label><select class="c-freqtype"><option value="days">Calendar days</option><option value="hours">Run hours</option></select></div>
+                <div class="field"><label>Frequency value</label><input type="number" class="c-freqvalue" min="1" step="1" placeholder="e.g. 30"></div>
+              </div>
+              <div class="form-actions">
+                <button type="button" class="primary" data-save-comp="${eq.id}">Save component</button>
+                <button type="button" class="ghost" data-cancel-comp="${eq.id}">Cancel</button>
+              </div>
+            </div>` : ''}
+          </div>
+        </div>`;
+    }).join('');
+
+    list.querySelectorAll('[data-toggle]').forEach(el => el.addEventListener('click', () => {
+      const id = el.dataset.toggle;
+      if(expanded.has(id)) expanded.delete(id); else expanded.add(id);
+      renderEquipment();
+    }));
+    list.querySelectorAll('[data-add-comp]').forEach(b => b.addEventListener('click', () => {
+      const f = $('#comp-form-' + b.dataset.addComp);
+      f.style.display = f.style.display === 'none' ? 'block' : 'none';
+    }));
+    list.querySelectorAll('[data-cancel-comp]').forEach(b => b.addEventListener('click', () => { $('#comp-form-' + b.dataset.cancelComp).style.display = 'none'; }));
+    list.querySelectorAll('[data-save-comp]').forEach(b => b.addEventListener('click', async () => {
+      const eqId = b.dataset.saveComp;
+      const scope = $('#comp-form-' + eqId);
+      const freqValue = parseFloat(scope.querySelector('.c-freqvalue').value);
+      if(!freqValue){ alert('Enter a frequency value.'); return; }
+      const { error } = await sb.from('components').insert({
+        equipment_id: eqId, type: scope.querySelector('.c-type').value,
+        lubricant: scope.querySelector('.c-lube').value.trim() || 'Unspecified',
+        qty: scope.querySelector('.c-qty').value ? parseFloat(scope.querySelector('.c-qty').value) : null,
+        unit: scope.querySelector('.c-unit').value, method: scope.querySelector('.c-method').value,
+        freq_type: scope.querySelector('.c-freqtype').value, freq_value: freqValue
+      });
+      if(error){ alert(error.message); return; }
+      expanded.add(eqId);
+      await loadAll(); render();
+    }));
+    list.querySelectorAll('[data-del-comp]').forEach(b => b.addEventListener('click', async () => {
+      if(!confirm('Delete this component and its history?')) return;
+      const { error } = await sb.from('components').delete().eq('id', b.dataset.delComp);
+      if(error){ alert(error.message); return; }
+      await loadAll(); render();
+    }));
+  }
+
+  // ---------------- SCHEDULE ----------------
+  function renderSchedule(){
+    const filter = $('#sch-filter').value;
+    let rows = state.components.map(c => ({ c, eq: equipmentById(c.equipment_id), info: dueInfo(c) }));
+    if(filter !== 'all') rows = rows.filter(r => r.info.status === filter);
+    rows.sort((a,b) => {
+      const order = { overdue:0, soon:1, none:2, ok:3 };
+      if(order[a.info.status] !== order[b.info.status]) return order[a.info.status] - order[b.info.status];
+      return (a.info.sortKey ?? 0) > (b.info.sortKey ?? 0) ? 1 : -1;
+    });
+    $('#sch-empty').style.display = rows.length ? 'none' : 'block';
+    $('#sch-body').innerHTML = rows.map(r => `
+      <tr>
+        <td><span class="tag">${esc(r.eq?r.eq.tag:'?')}</span> ${esc(r.eq?r.eq.name:'')}</td>
+        <td>${esc(r.c.type)}</td><td>${esc(r.c.lubricant)}</td>
+        <td>every ${r.c.freq_value} ${r.c.freq_type === 'days' ? 'days' : 'hrs'}</td>
+        <td>${statusPill(r.info.status)}</td><td>${r.info.label}</td>
+        <td>${canLog() ? `<button class="small" data-log-comp="${r.c.id}">Log service</button>` : ''}</td>
+      </tr>`).join('');
+    $('#sch-body').querySelectorAll('[data-log-comp]').forEach(b => b.addEventListener('click', () => { prefillLog(b.dataset.logComp); goto('log'); }));
+
+    const cl = $('#route-checklist');
+    cl.innerHTML = state.components.length ? state.components.map(c => {
+      const eq = equipmentById(c.equipment_id);
+      return `<label><input type="checkbox" value="${c.id}"> <span class="tag">${esc(eq?eq.tag:'?')}</span> ${esc(c.type)} — ${esc(c.lubricant)}</label>`;
+    }).join('') : '<div class="hint">Add components under Equipment first.</div>';
+
+    $('#route-empty').style.display = state.routes.length ? 'none' : 'block';
+    $('#route-list').innerHTML = state.routes.map(rt => {
+      const comps = rt.componentIds.map(id => componentById(id)).filter(Boolean);
+      const statuses = comps.map(c => dueInfo(c).status);
+      const overdueCount = statuses.filter(s => s === 'overdue').length;
+      const soonCount = statuses.filter(s => s === 'soon').length;
+      return `<div class="route-card">
+        <div class="route-title"><span>${esc(rt.name)} <span class="hint">(${comps.length} points)</span></span>
+        ${canEdit() ? `<button class="small danger" data-del-route="${rt.id}">Delete route</button>` : ''}</div>
+        <div class="hint" style="margin-bottom:8px;">${overdueCount} overdue · ${soonCount} due soon</div>
+        <div class="table-scroll"><table><tbody>${comps.map(c => {
+          const eq = equipmentById(c.equipment_id); const info = dueInfo(c);
+          return `<tr><td><span class="tag">${esc(eq?eq.tag:'?')}</span></td><td>${esc(c.type)}</td><td>${esc(c.lubricant)}</td><td>${statusPill(info.status)}</td><td>${info.label}</td></tr>`;
+        }).join('')}</tbody></table></div></div>`;
+    }).join('');
+    $('#route-list').querySelectorAll('[data-del-route]').forEach(b => b.addEventListener('click', async () => {
+      await sb.from('routes').delete().eq('id', b.dataset.delRoute);
+      await loadAll(); renderSchedule();
+    }));
+  }
+  $('#sch-filter').addEventListener('change', renderSchedule);
+  $('#route-save').addEventListener('click', async () => {
+    const name = $('#route-name').value.trim();
+    const ids = $$('#route-checklist input:checked').map(cb => cb.value);
+    if(!name){ alert('Give the route a name.'); return; }
+    if(!ids.length){ alert('Select at least one component.'); return; }
+    const { data: rt, error } = await sb.from('routes').insert({ name }).select().single();
+    if(error){ alert(error.message); return; }
+    await sb.from('route_components').insert(ids.map(cid => ({ route_id: rt.id, component_id: cid })));
+    $('#route-name').value = '';
+    $$('#route-checklist input:checked').forEach(cb => cb.checked = false);
+    await loadAll(); renderSchedule();
+  });
+
+  // ---------------- LOG SERVICE ----------------
+  $('#lg-date').value = todayISO();
+  $('#lg-equip').addEventListener('change', () => {
+    fillCompSelect($('#lg-comp'), $('#lg-equip').value, 'Select equipment first');
+    $('#lg-comp-info').style.display = 'none'; $('#lg-hours-field').style.display = 'none';
+  });
+  $('#lg-comp').addEventListener('change', () => {
+    const comp = componentById($('#lg-comp').value);
+    if(!comp){ $('#lg-comp-info').style.display = 'none'; $('#lg-hours-field').style.display = 'none'; return; }
+    const info = dueInfo(comp);
+    $('#lg-comp-info-text').innerHTML = `Lubricant: <strong>${esc(comp.lubricant)}</strong> · Standard qty: ${comp.qty != null ? comp.qty + ' ' + esc(comp.unit) : '—'} · Frequency: every ${comp.freq_value} ${comp.freq_type === 'days' ? 'days' : 'run hrs'} · Current status: ${info.label}`;
+    $('#lg-comp-info').style.display = 'block';
+    $('#lg-qty').value = comp.qty != null ? comp.qty : '';
+    $('#lg-unit').value = comp.unit || 'L';
+    $('#lg-method').value = comp.method || 'Manual grease gun';
+    if(comp.freq_type === 'hours'){
+      $('#lg-hours-field').style.display = 'flex';
+      const eq = equipmentById(comp.equipment_id);
+      $('#lg-hours').value = eq && eq.current_hours != null ? eq.current_hours : '';
+    } else { $('#lg-hours-field').style.display = 'none'; }
+  });
+  function prefillLog(compId){
+    const comp = componentById(compId); if(!comp) return;
+    fillEquipSelect($('#lg-equip')); $('#lg-equip').value = comp.equipment_id;
+    fillCompSelect($('#lg-comp'), comp.equipment_id, ''); $('#lg-comp').value = compId;
+    $('#lg-comp').dispatchEvent(new Event('change'));
+  }
+  $('#log-form').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const compId = $('#lg-comp').value;
+    if(!compId){ alert('Select a component.'); return; }
+    const comp = componentById(compId);
+    const hours = comp.freq_type === 'hours' ? ($('#lg-hours').value ? parseFloat($('#lg-hours').value) : null) : null;
+    const { error } = await sb.rpc('log_service', {
+      p_component_id: compId, p_date: $('#lg-date').value, p_hours: hours,
+      p_qty: $('#lg-qty').value ? parseFloat($('#lg-qty').value) : null,
+      p_unit: $('#lg-unit').value, p_method: $('#lg-method').value,
+      p_technician: $('#lg-tech').value.trim(), p_notes: $('#lg-notes').value.trim()
+    });
+    if(error){ alert(error.message); return; }
+    $('#log-form').reset(); $('#lg-date').value = todayISO();
+    $('#lg-comp-info').style.display = 'none'; $('#lg-hours-field').style.display = 'none';
+    await loadAll(); render();
+    goto('dashboard');
+  });
+  $('#lg-clear').addEventListener('click', () => {
+    $('#log-form').reset(); $('#lg-date').value = todayISO();
+    $('#lg-comp-info').style.display = 'none'; $('#lg-hours-field').style.display = 'none';
+  });
+
+  // ---------------- OIL ANALYSIS ----------------
+  $('#ol-date').value = todayISO();
+  $('#ol-equip').addEventListener('change', () => fillCompSelect($('#ol-comp'), $('#ol-equip').value, 'Select equipment first'));
+  $('#oil-form').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const compId = $('#ol-comp').value;
+    if(!compId){ alert('Select a component.'); return; }
+    const { error } = await sb.from('oil_samples').insert({
+      component_id: compId, date: $('#ol-date').value, lab: $('#ol-lab').value.trim(), flag: $('#ol-flag').value,
+      viscosity: $('#ol-visc').value ? parseFloat($('#ol-visc').value) : null,
+      water: $('#ol-water').value ? parseFloat($('#ol-water').value) : null,
+      particle: $('#ol-particle').value.trim(),
+      tan: $('#ol-tan').value ? parseFloat($('#ol-tan').value) : null,
+      tbn: $('#ol-tbn').value ? parseFloat($('#ol-tbn').value) : null,
+      notes: $('#ol-notes').value.trim()
+    });
+    if(error){ alert(error.message); return; }
+    $('#oil-form').reset(); $('#ol-date').value = todayISO();
+    await loadAll(); render();
+  });
+  $('#ol-clear').addEventListener('click', () => { $('#oil-form').reset(); $('#ol-date').value = todayISO(); });
+  $('#ol-filter').addEventListener('change', renderOil);
+
+  function renderOil(){
+    const filter = $('#ol-filter').value;
+    let list = [...state.oilSamples].sort((a,b) => (b.date||'').localeCompare(a.date||''));
+    if(filter !== 'all') list = list.filter(s => s.flag === filter);
+    $('#ol-empty').style.display = list.length ? 'none' : 'block';
+    $('#ol-body').innerHTML = list.map(s => {
+      const comp = componentById(s.component_id); const eq = comp ? equipmentById(comp.equipment_id) : null;
+      return `<tr><td>${fmtDate(s.date)}</td><td>${eq?`<span class="tag">${esc(eq.tag)}</span> ${esc(eq.name)}`:'—'}</td><td>${comp?esc(comp.type):'—'}</td><td>${flagPill(s.flag)}</td><td>${s.viscosity ?? '—'}</td><td>${s.water ?? '—'}</td><td>${esc(s.particle)||'—'}</td><td>${esc(s.notes)||'—'}</td></tr>`;
+    }).join('');
+  }
+
+  // ---------------- DASHBOARD ----------------
+  function renderDashboard(){
+    const withInfo = state.components.map(c => ({ c, eq: equipmentById(c.equipment_id), info: dueInfo(c) }));
+    const overdue = withInfo.filter(r => r.info.status === 'overdue');
+    const soon = withInfo.filter(r => r.info.status === 'soon');
+    const flags = state.oilSamples.filter(s => s.flag !== 'Normal');
+    const recentCutoff = new Date(); recentCutoff.setDate(recentCutoff.getDate() - 30);
+    const recentLogs = state.serviceLogs.filter(l => l.date && new Date(l.date+'T00:00:00') >= recentCutoff);
+
+    $('#d-overdue').textContent = overdue.length; $('#d-soon').textContent = soon.length;
+    $('#d-oilflags').textContent = flags.length; $('#d-recent').textContent = recentLogs.length;
+
+    const attention = [...overdue, ...soon];
+    $('#d-attention-empty').style.display = attention.length ? 'none' : 'block';
+    $('#d-attention-body').innerHTML = attention.map(r => `<tr><td><span class="tag">${esc(r.eq?r.eq.tag:'?')}</span> ${esc(r.eq?r.eq.name:'')}</td><td>${esc(r.c.type)}</td><td>${esc(r.c.lubricant)}</td><td>${statusPill(r.info.status)}</td><td>${r.info.label}</td></tr>`).join('');
+
+    const flagSorted = [...flags].sort((a,b) => (b.date||'').localeCompare(a.date||'')).slice(0,6);
+    $('#d-oil-empty').style.display = flagSorted.length ? 'none' : 'block';
+    $('#d-oil-body').innerHTML = flagSorted.map(s => {
+      const comp = componentById(s.component_id); const eq = comp ? equipmentById(comp.equipment_id) : null;
+      return `<tr><td>${fmtDate(s.date)}</td><td>${eq?esc(eq.tag):'—'}</td><td>${comp?esc(comp.type):'—'}</td><td>${flagPill(s.flag)}</td><td>${esc(s.notes)||'—'}</td></tr>`;
+    }).join('');
+
+    const recentSorted = [...state.serviceLogs].sort((a,b) => (b.date||'').localeCompare(a.date||'')).slice(0,8);
+    $('#d-recent-empty').style.display = recentSorted.length ? 'none' : 'block';
+    $('#d-recent-body').innerHTML = recentSorted.map(l => {
+      const comp = componentById(l.component_id); const eq = comp ? equipmentById(comp.equipment_id) : null;
+      return `<tr><td>${fmtDate(l.date)}</td><td>${eq?esc(eq.tag):'—'}</td><td>${comp?esc(comp.type):'—'}</td><td>${l.qty != null ? l.qty + ' ' + esc(l.unit) : '—'}</td><td>${esc(l.technician)||'—'}</td></tr>`;
+    }).join('');
+
+    $('#nc-dash').textContent = overdue.length || ''; $('#nc-equip').textContent = state.equipment.length || '';
+  }
+
+  // ---------------- REPORTS ----------------
+  function logsInRange(){ const from=$('#rp-from').value, to=$('#rp-to').value; return state.serviceLogs.filter(l => l.date && (!from||l.date>=from) && (!to||l.date<=to)); }
+  function samplesInRange(){ const from=$('#rp-from').value, to=$('#rp-to').value; return state.oilSamples.filter(s => s.date && (!from||s.date>=from) && (!to||s.date<=to)); }
+  function renderReports(){
+    const logs = logsInRange();
+    $('#rp-count').textContent = logs.length;
+    const equipSet = new Set(logs.map(l => { const c = componentById(l.component_id); return c ? c.equipment_id : null; }).filter(Boolean));
+    $('#rp-equip').textContent = equipSet.size;
+    $('#rp-samples').textContent = samplesInRange().length;
+    const total = state.components.length;
+    const overdue = state.components.filter(c => dueInfo(c).status === 'overdue').length;
+    $('#rp-compliance').textContent = total ? Math.round((total-overdue)/total*100) + '%' : '—';
+    renderBars('#rp-bar-lube', logs, l => { const c = componentById(l.component_id); return c ? c.lubricant : 'Unspecified'; });
+    renderBars('#rp-bar-equip', logs, l => { const c = componentById(l.component_id); const eq = c ? equipmentById(c.equipment_id) : null; return eq ? `${eq.tag} — ${eq.name}` : 'Unknown'; });
+  }
+  function renderBars(sel, list, keyFn){
+    const counts = {}; list.forEach(item => { const k = keyFn(item) || 'Unspecified'; counts[k] = (counts[k]||0)+1; });
+    const entries = Object.entries(counts).sort((a,b) => b[1]-a[1]).slice(0,10);
+    const el = $(sel);
+    if(!entries.length){ el.innerHTML = '<div class="hint">No records in this range.</div>'; return; }
+    const max = entries[0][1];
+    el.innerHTML = entries.map(([name,count]) => `<div class="bar-row"><div class="bar-name">${esc(name)}</div><div class="bar-track"><div class="bar-fill" style="width:${(count/max*100).toFixed(0)}%"></div></div><div class="bar-count">${count}</div></div>`).join('');
+  }
+  $('#rp-run').addEventListener('click', renderReports);
+  $('#rp-reset').addEventListener('click', () => { $('#rp-from').value=''; $('#rp-to').value=''; renderReports(); });
+  $('#rp-export').addEventListener('click', () => {
+    const headers = ['Date','Equipment Tag','Equipment Name','Component','Lubricant','Qty','Unit','Method','Technician','Hours at Service','Notes'];
+    const rows = logsInRange().map(l => { const c = componentById(l.component_id); const eq = c ? equipmentById(c.equipment_id) : null; return [l.date, eq?eq.tag:'', eq?eq.name:'', c?c.type:'', c?c.lubricant:'', l.qty ?? '', l.unit, l.method, l.technician, l.hours ?? '', l.notes]; });
+    const escCsv = v => `"${String(v ?? '').replace(/"/g,'""')}"`;
+    const csv = [headers, ...rows].map(r => r.map(escCsv).join(',')).join('\n');
+    const blob = new Blob([csv], {type:'text/csv'}); const url = URL.createObjectURL(blob);
+    const a = document.createElement('a'); a.href = url; a.download = `lubrication-records-${todayISO()}.csv`;
+    document.body.appendChild(a); a.click(); document.body.removeChild(a); URL.revokeObjectURL(url);
+  });
+
+  // ---------------- USERS (admin) ----------------
+  function renderUsers(){
+    if(!isAdmin()) return;
+    $('#users-list').innerHTML = state.users.map(u => `
+      <div class="userrow">
+        <div><div class="u-email">${esc(u.email)}</div><div class="u-name">${esc(u.full_name || '')}</div></div>
+        <select data-role-for="${u.id}" ${u.id === profile.id ? 'disabled' : ''}>
+          ${['admin','supervisor','technician','viewer'].map(r => `<option value="${r}" ${u.role===r?'selected':''}>${r}</option>`).join('')}
+        </select>
+        ${u.id === profile.id ? '<span class="hint">(you)</span>' : ''}
+      </div>`).join('');
+    $('#users-list').querySelectorAll('[data-role-for]').forEach(sel => sel.addEventListener('change', async () => {
+      const { error } = await sb.from('profiles').update({ role: sel.value }).eq('id', sel.dataset.roleFor);
+      if(error){ alert(error.message); return; }
+      await loadAll(); renderUsers();
+    }));
+  }
+
+  // ---------------- RENDER ALL ----------------
+  function render(){
+    fillEquipSelect($('#lg-equip')); fillEquipSelect($('#ol-equip'));
+    renderEquipment(); renderSchedule(); renderDashboard(); renderOil(); renderReports(); renderUsers();
+  }
+
+  // ---------------- INIT ----------------
+  (async function init(){
+    if(SUPABASE_URL.includes('PASTE_YOUR')){
+      authMsg('This app is not connected to a database yet. See README.md for setup steps.', 'error');
+      return;
+    }
+    const { data: { session } } = await sb.auth.getSession();
+    if(session) await afterLogin();
+  })();
+})();
+</script>
+</body>
+</html>
