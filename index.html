@@ -7,6 +7,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Oswald:wght@400;500;600;700&family=Inter:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 <style>
   :root{
     --paper:#F1F3F0; --panel:#FFFFFF; --panel-2:#F7F8F6;
@@ -152,6 +153,11 @@
   .checklist{ max-height:220px; overflow-y:auto; border:1px solid var(--line); padding:10px; border-radius:var(--radius); background:#fff;}
   .checklist label{ display:flex; align-items:center; gap:8px; font-size:0.82rem; color:var(--ink); padding:5px 0; }
 
+  .level-tag{ font-family:'IBM Plex Mono',monospace; font-size:0.75rem; padding:2px 7px; border-radius:2px; white-space:nowrap; background:var(--panel-2); color:var(--ink-dim); border:1px solid var(--line);}
+  .level-tag.low{ background:var(--red-tint); color:var(--red); border-color:transparent;}
+  .bulk-row{ display:flex; gap:10px; align-items:center; flex-wrap:wrap; margin-bottom:12px;}
+  .bulk-row input[type=file]{ max-width:260px; }
+  #bulk-summary{ font-size:0.82rem; color:var(--ink-dim); white-space:pre-line; line-height:1.6;}
   .userrow{ display:flex; align-items:center; gap:14px; padding:12px 0; border-bottom:1px solid var(--line); flex-wrap:wrap;}
   .userrow:last-child{ border-bottom:none; }
   .userrow .u-email{ font-weight:500; font-size:0.86rem; min-width:200px;}
@@ -258,9 +264,19 @@
     <section class="view" id="view-equipment">
       <div class="view-head">
         <div><h1>Equipment</h1><p>Machines and their individual lube points — gearboxes, bearings, couplings, and more.</p></div>
-        <button class="primary role-edit" id="eq-add-toggle">+ Add equipment</button>
+        <button class="primary role-admin-equip" id="eq-add-toggle">+ Add equipment</button>
       </div>
-      <div class="panel role-edit" id="eq-add-panel" style="display:none;">
+      <div class="panel role-admin-equip" id="bulk-import-panel">
+        <div class="panel-head"><h2>Bulk import from Excel</h2></div>
+        <div class="hint" style="margin-bottom:12px;">Add many machines and lube points at once. Download the template, fill it in (one row per lube point — repeat the Equipment Tag for machines with several points), then upload it here.</div>
+        <div class="bulk-row">
+          <button type="button" class="ghost" id="bulk-template-btn">Download template (.xlsx)</button>
+          <input type="file" id="bulk-file-input" accept=".xlsx,.xls,.csv">
+          <button type="button" class="primary" id="bulk-import-btn" disabled>Import</button>
+        </div>
+        <div id="bulk-summary"></div>
+      </div>
+      <div class="panel role-admin-equip" id="eq-add-panel" style="display:none;">
         <h2>New equipment</h2>
         <form id="eq-form">
           <div class="form-grid">
@@ -328,7 +344,7 @@
             <div class="field"><label>Quantity used</label><input type="number" id="lg-qty" min="0" step="0.01"></div>
             <div class="field"><label>Unit</label><select id="lg-unit"><option>L</option><option>mL</option><option>gal</option><option>qt</option><option>oz</option><option>kg</option><option>g</option><option>shots</option></select></div>
             <div class="field"><label>Method</label><select id="lg-method"><option>Manual grease gun</option><option>Oil top-off</option><option>Full oil change</option><option>Auto-lubricator refill</option><option>Sample &amp; inspect only</option><option>Other</option></select></div>
-            <div class="field span3"><label>Notes</label><textarea id="lg-notes" placeholder="Condition observed, leaks, anomalies..."></textarea></div>
+            <div class="field span3"><label id="lg-notes-label">Notes</label><textarea id="lg-notes" placeholder="Condition observed, leaks, anomalies..."></textarea></div>
           </div>
           <div class="form-actions"><button type="submit" class="primary">Save record</button><button type="button" class="ghost" id="lg-clear">Clear</button></div>
         </form>
@@ -350,6 +366,7 @@
             <div class="field"><label>Sample date</label><input type="date" id="ol-date" required></div>
             <div class="field"><label>Lab</label><input type="text" id="ol-lab" placeholder="e.g. In-house / Polaris"></div>
             <div class="field"><label>Overall flag</label><select id="ol-flag"><option>Normal</option><option>Caution</option><option>Critical</option></select></div>
+            <div class="field"><label>Quantity extracted (optional)</label><input type="number" id="ol-sampleqty" min="0" step="0.01" placeholder="e.g. 2"><div class="hint">Deducted from the component's tracked level, if it has one.</div></div>
             <div class="field"><label>Viscosity (cSt)</label><input type="number" id="ol-visc" step="0.1"></div>
             <div class="field"><label>Water content (%)</label><input type="number" id="ol-water" step="0.01"></div>
             <div class="field"><label>Particle count (ISO code)</label><input type="text" id="ol-particle" placeholder="e.g. 18/16/13"></div>
@@ -397,7 +414,7 @@
       <div class="view-head"><div><h1>Users</h1><p>Everyone who has signed up, and what they're allowed to do.</p></div></div>
       <div class="panel">
         <div class="hint" style="margin-bottom:14px;">
-          Admin — full access, manages users · Supervisor — full access to equipment/logs · Technician — logs service &amp; oil samples · Viewer — read-only.
+          Admin — only role that can add/edit/delete equipment &amp; components (incl. bulk import), plus manages users · Supervisor — manages logs/routes, can't change equipment · Technician — logs service &amp; oil samples · Viewer — read-only.
         </div>
         <div id="users-list"></div>
       </div>
@@ -433,6 +450,7 @@
   function canEdit(){ return profile && (profile.role === 'admin' || profile.role === 'supervisor'); }
   function canLog(){ return profile && (canEdit() || profile.role === 'technician'); }
   function isAdmin(){ return profile && profile.role === 'admin'; }
+  function canManageEquipment(){ return isAdmin(); } // only Admin can add/edit/delete equipment & components
 
   // ---------------- AUTH ----------------
   $('#show-signup').addEventListener('click', () => {
@@ -498,6 +516,7 @@
 
   function applyRoleGating(){
     $$('.role-edit').forEach(el => el.style.display = canEdit() ? '' : 'none');
+    $$('.role-admin-equip').forEach(el => el.style.display = canManageEquipment() ? '' : 'none');
     $('#log-panel').style.display = canLog() ? 'block' : 'none';
     $('#log-readonly').style.display = canLog() ? 'none' : 'block';
     $('#oil-panel').style.display = canLog() ? 'block' : 'none';
@@ -610,17 +629,20 @@
           <div class="eq-body ${isOpen ? 'open' : ''}" id="eq-body-${eq.id}">
             ${comps.length ? comps.map(c => {
               const info = dueInfo(c);
+              const hasLevel = c.capacity != null;
+              const levelLow = hasLevel && c.current_level != null && (c.current_level / c.capacity) < 0.2;
               return `<div class="comp-row">
                 <div class="comp-main">
                   <div class="comp-type">${esc(c.type)} <span class="mono" style="color:var(--ink-dim); font-weight:400;">· ${esc(c.lubricant)}</span></div>
                   <div class="comp-detail">${c.qty != null ? c.qty + ' ' + esc(c.unit) + ' · ' : ''}${esc(c.method||'')} · every ${c.freq_value} ${c.freq_type === 'days' ? 'days' : 'run hrs'}</div>
                 </div>
+                ${hasLevel ? `<span class="level-tag ${levelLow?'low':''}">${c.current_level ?? '—'} / ${c.capacity} ${esc(c.unit||'')}</span>` : ''}
                 ${statusPill(info.status)}
                 <div class="comp-detail" style="min-width:150px; text-align:right;">${info.label}</div>
-                ${canEdit() ? `<button class="small danger" data-del-comp="${c.id}">Delete</button>` : ''}
+                ${canManageEquipment() ? `<button class="small danger" data-del-comp="${c.id}">Delete</button>` : ''}
               </div>`;
             }).join('') : `<div class="hint">No lube points added yet.</div>`}
-            ${canEdit() ? `
+            ${canManageEquipment() ? `
             <button class="ghost add-comp-toggle" data-add-comp="${eq.id}">+ Add component</button>
             <div id="comp-form-${eq.id}" style="display:none; margin-top:14px;">
               <div class="form-grid two">
@@ -631,7 +653,9 @@
                 <div class="field"><label>Method</label><select class="c-method"><option>Manual grease gun</option><option>Oil top-off</option><option>Full oil change</option><option>Auto-lubricator refill</option><option>Sample &amp; inspect only</option><option>Other</option></select></div>
                 <div class="field"><label>Frequency basis</label><select class="c-freqtype"><option value="days">Calendar days</option><option value="hours">Run hours</option></select></div>
                 <div class="field"><label>Frequency value</label><input type="number" class="c-freqvalue" min="1" step="1" placeholder="e.g. 30"></div>
+                <div class="field"><label>Reservoir capacity (optional)</label><input type="number" class="c-capacity" min="0" step="0.01" placeholder="e.g. 200 — leave blank if not applicable"></div>
               </div>
+              <div class="hint" style="margin-bottom:10px;">Set a capacity for oil-filled reservoirs (gearboxes, tanks) to track the current level as samples are taken and top-offs are logged. Leave blank for grease points.</div>
               <div class="form-actions">
                 <button type="button" class="primary" data-save-comp="${eq.id}">Save component</button>
                 <button type="button" class="ghost" data-cancel-comp="${eq.id}">Cancel</button>
@@ -656,12 +680,14 @@
       const scope = $('#comp-form-' + eqId);
       const freqValue = parseFloat(scope.querySelector('.c-freqvalue').value);
       if(!freqValue){ alert('Enter a frequency value.'); return; }
+      const capacity = scope.querySelector('.c-capacity').value ? parseFloat(scope.querySelector('.c-capacity').value) : null;
       const { error } = await sb.from('components').insert({
         equipment_id: eqId, type: scope.querySelector('.c-type').value,
         lubricant: scope.querySelector('.c-lube').value.trim() || 'Unspecified',
         qty: scope.querySelector('.c-qty').value ? parseFloat(scope.querySelector('.c-qty').value) : null,
         unit: scope.querySelector('.c-unit').value, method: scope.querySelector('.c-method').value,
-        freq_type: scope.querySelector('.c-freqtype').value, freq_value: freqValue
+        freq_type: scope.querySelector('.c-freqtype').value, freq_value: freqValue,
+        capacity: capacity, current_level: capacity
       });
       if(error){ alert(error.message); return; }
       expanded.add(eqId);
@@ -674,6 +700,88 @@
       await loadAll(); render();
     }));
   }
+
+  // ---------------- BULK IMPORT (admin) ----------------
+  const BULK_HEADERS = ['Equipment Tag','Equipment Name','Location','Criticality','Current Hours','Component Type','Lubricant','Reservoir Capacity','Qty Per Service','Unit','Method','Frequency Basis (days or hours)','Frequency Value'];
+  let bulkRows = [];
+  $('#bulk-template-btn').addEventListener('click', () => {
+    const example = ['PUMP-014','Feed Pump #2','Building 3, Line 2','Important','4200','Gearbox','ISO VG 68 gear oil','200','2.5','L','Oil top-off','days','30'];
+    const ws = XLSX.utils.aoa_to_sheet([BULK_HEADERS, example]);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, 'Equipment');
+    XLSX.writeFile(wb, 'lubrication-import-template.xlsx');
+  });
+  $('#bulk-file-input').addEventListener('change', (e) => {
+    const file = e.target.files[0];
+    bulkRows = [];
+    $('#bulk-import-btn').disabled = true;
+    $('#bulk-summary').textContent = '';
+    if(!file) return;
+    const reader = new FileReader();
+    reader.onload = (evt) => {
+      try{
+        const wb = XLSX.read(evt.target.result, { type: 'array' });
+        const sheet = wb.Sheets[wb.SheetNames[0]];
+        bulkRows = XLSX.utils.sheet_to_json(sheet, { defval: '' });
+        if(!bulkRows.length){ $('#bulk-summary').textContent = 'No rows found in that file.'; return; }
+        $('#bulk-import-btn').disabled = false;
+        $('#bulk-summary').textContent = `${bulkRows.length} row(s) loaded from "${file.name}". Click Import to proceed.`;
+      }catch(err){
+        $('#bulk-summary').textContent = 'Could not read that file: ' + err.message;
+      }
+    };
+    reader.readAsArrayBuffer(file);
+  });
+  $('#bulk-import-btn').addEventListener('click', async () => {
+    if(!bulkRows.length) return;
+    $('#bulk-import-btn').disabled = true;
+    $('#bulk-summary').textContent = 'Importing...';
+    const errors = [];
+    let eqCreated = 0, compCreated = 0;
+    const tagToId = {};
+    state.equipment.forEach(e => tagToId[e.tag] = e.id);
+    for(let i = 0; i < bulkRows.length; i++){
+      const row = bulkRows[i];
+      const rowNum = i + 2; // header is row 1
+      const tag = String(row['Equipment Tag'] || '').trim();
+      if(!tag){ errors.push(`Row ${rowNum}: missing Equipment Tag, skipped.`); continue; }
+      let eqId = tagToId[tag];
+      if(!eqId){
+        const { data, error } = await sb.from('equipment').insert({
+          tag, name: String(row['Equipment Name'] || tag).trim(),
+          location: String(row['Location'] || '').trim(),
+          criticality: String(row['Criticality'] || 'Standard').trim() || 'Standard',
+          current_hours: row['Current Hours'] !== '' && row['Current Hours'] != null ? parseFloat(row['Current Hours']) : null
+        }).select().single();
+        if(error){ errors.push(`Row ${rowNum} (equipment ${tag}): ${error.message}`); continue; }
+        eqId = data.id; tagToId[tag] = eqId; eqCreated++;
+      }
+      const compType = String(row['Component Type'] || '').trim();
+      if(!compType) continue; // equipment-only row, no lube point on this line
+      const freqBasisRaw = String(row['Frequency Basis (days or hours)'] || row['Frequency Basis'] || '').trim().toLowerCase();
+      const freqType = freqBasisRaw === 'hours' ? 'hours' : 'days';
+      const freqValue = parseFloat(row['Frequency Value']);
+      if(!freqValue){ errors.push(`Row ${rowNum} (${tag} / ${compType}): missing Frequency Value, component skipped.`); continue; }
+      const capacity = row['Reservoir Capacity'] !== '' && row['Reservoir Capacity'] != null ? parseFloat(row['Reservoir Capacity']) : null;
+      const { error: cErr } = await sb.from('components').insert({
+        equipment_id: eqId, type: compType,
+        lubricant: String(row['Lubricant'] || 'Unspecified').trim(),
+        qty: row['Qty Per Service'] !== '' && row['Qty Per Service'] != null ? parseFloat(row['Qty Per Service']) : null,
+        unit: String(row['Unit'] || 'L').trim() || 'L',
+        method: String(row['Method'] || 'Manual grease gun').trim() || 'Manual grease gun',
+        freq_type: freqType, freq_value: freqValue,
+        capacity: capacity, current_level: capacity
+      });
+      if(cErr){ errors.push(`Row ${rowNum} (${tag} / ${compType}): ${cErr.message}`); continue; }
+      compCreated++;
+    }
+    let summary = `Done. Created ${eqCreated} new equipment and ${compCreated} component(s).`;
+    if(errors.length) summary += `\n\n${errors.length} issue(s):\n` + errors.join('\n');
+    $('#bulk-summary').textContent = summary;
+    bulkRows = [];
+    $('#bulk-file-input').value = '';
+    await loadAll(); render();
+  });
 
   // ---------------- SCHEDULE ----------------
   function renderSchedule(){
@@ -746,7 +854,8 @@
     const comp = componentById($('#lg-comp').value);
     if(!comp){ $('#lg-comp-info').style.display = 'none'; $('#lg-hours-field').style.display = 'none'; return; }
     const info = dueInfo(comp);
-    $('#lg-comp-info-text').innerHTML = `Lubricant: <strong>${esc(comp.lubricant)}</strong> · Standard qty: ${comp.qty != null ? comp.qty + ' ' + esc(comp.unit) : '—'} · Frequency: every ${comp.freq_value} ${comp.freq_type === 'days' ? 'days' : 'run hrs'} · Current status: ${info.label}`;
+    const levelText = comp.capacity != null ? ` · Current level: <strong>${comp.current_level ?? '—'} / ${comp.capacity} ${esc(comp.unit||'')}</strong>` : '';
+    $('#lg-comp-info-text').innerHTML = `Lubricant: <strong>${esc(comp.lubricant)}</strong> · Standard qty: ${comp.qty != null ? comp.qty + ' ' + esc(comp.unit) : '—'} · Frequency: every ${comp.freq_value} ${comp.freq_type === 'days' ? 'days' : 'run hrs'} · Current status: ${info.label}${levelText}`;
     $('#lg-comp-info').style.display = 'block';
     $('#lg-qty').value = comp.qty != null ? comp.qty : '';
     $('#lg-unit').value = comp.unit || 'L';
@@ -757,6 +866,13 @@
       $('#lg-hours').value = eq && eq.current_hours != null ? eq.current_hours : '';
     } else { $('#lg-hours-field').style.display = 'none'; }
   });
+  function updateNotesLabel(){
+    const isTopOff = $('#lg-method').value === 'Oil top-off';
+    $('#lg-notes-label').textContent = isTopOff ? 'Reason for top-off (required)' : 'Notes';
+    $('#lg-notes').placeholder = isTopOff ? "Why was a top-off needed? e.g. normal consumption, minor seal weep, post-sample refill..." : 'Condition observed, leaks, anomalies...';
+  }
+  $('#lg-method').addEventListener('change', updateNotesLabel);
+  updateNotesLabel();
   function prefillLog(compId){
     const comp = componentById(compId); if(!comp) return;
     fillEquipSelect($('#lg-equip')); $('#lg-equip').value = comp.equipment_id;
@@ -768,6 +884,10 @@
     const compId = $('#lg-comp').value;
     if(!compId){ alert('Select a component.'); return; }
     const comp = componentById(compId);
+    if($('#lg-method').value === 'Oil top-off' && !$('#lg-notes').value.trim()){
+      alert('Please enter a reason for the top-off in the Notes field.');
+      return;
+    }
     const hours = comp.freq_type === 'hours' ? ($('#lg-hours').value ? parseFloat($('#lg-hours').value) : null) : null;
     const { error } = await sb.rpc('log_service', {
       p_component_id: compId, p_date: $('#lg-date').value, p_hours: hours,
@@ -778,12 +898,14 @@
     if(error){ alert(error.message); return; }
     $('#log-form').reset(); $('#lg-date').value = todayISO();
     $('#lg-comp-info').style.display = 'none'; $('#lg-hours-field').style.display = 'none';
+    updateNotesLabel();
     await loadAll(); render();
     goto('dashboard');
   });
   $('#lg-clear').addEventListener('click', () => {
     $('#log-form').reset(); $('#lg-date').value = todayISO();
     $('#lg-comp-info').style.display = 'none'; $('#lg-hours-field').style.display = 'none';
+    updateNotesLabel();
   });
 
   // ---------------- OIL ANALYSIS ----------------
@@ -793,14 +915,15 @@
     e.preventDefault();
     const compId = $('#ol-comp').value;
     if(!compId){ alert('Select a component.'); return; }
-    const { error } = await sb.from('oil_samples').insert({
-      component_id: compId, date: $('#ol-date').value, lab: $('#ol-lab').value.trim(), flag: $('#ol-flag').value,
-      viscosity: $('#ol-visc').value ? parseFloat($('#ol-visc').value) : null,
-      water: $('#ol-water').value ? parseFloat($('#ol-water').value) : null,
-      particle: $('#ol-particle').value.trim(),
-      tan: $('#ol-tan').value ? parseFloat($('#ol-tan').value) : null,
-      tbn: $('#ol-tbn').value ? parseFloat($('#ol-tbn').value) : null,
-      notes: $('#ol-notes').value.trim()
+    const { error } = await sb.rpc('log_oil_sample', {
+      p_component_id: compId, p_date: $('#ol-date').value, p_lab: $('#ol-lab').value.trim(), p_flag: $('#ol-flag').value,
+      p_viscosity: $('#ol-visc').value ? parseFloat($('#ol-visc').value) : null,
+      p_water: $('#ol-water').value ? parseFloat($('#ol-water').value) : null,
+      p_particle: $('#ol-particle').value.trim(),
+      p_tan: $('#ol-tan').value ? parseFloat($('#ol-tan').value) : null,
+      p_tbn: $('#ol-tbn').value ? parseFloat($('#ol-tbn').value) : null,
+      p_notes: $('#ol-notes').value.trim(),
+      p_sample_qty: $('#ol-sampleqty').value ? parseFloat($('#ol-sampleqty').value) : null
     });
     if(error){ alert(error.message); return; }
     $('#oil-form').reset(); $('#ol-date').value = todayISO();
