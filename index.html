@@ -215,7 +215,7 @@
 <div class="app" id="app">
   <aside class="sidebar">
     <div class="brand"><span class="mark"></span>Lubrication</div>
-    <div class="brand-sub">Dev By Afaq Ahmad</div>
+    <div class="brand-sub">Equipment lubrication &amp; PM tracking</div>
     <nav>
       <button class="tab active" data-view="dashboard">Dashboard <span class="num" id="nc-dash"></span></button>
       <button class="tab" data-view="equipment">Equipment <span class="num" id="nc-equip"></span></button>
@@ -276,6 +276,20 @@
         </div>
         <div id="bulk-summary"></div>
       </div>
+      <div class="panel role-admin-equip" id="hours-import-panel">
+        <div class="panel-head"><h2>Import running hours (COOISPI)</h2></div>
+        <div class="hint" style="margin-bottom:12px;">
+          Upload a COOISPI confirmation export as-is. The app sums the confirmed HR-unit
+          activity for each Resource, then adds that total to the "current run hours" of
+          every equipment tagged with that Resource code — including equipment COOISPI
+          never names directly (belts, motors, bearings on the same line).
+        </div>
+        <div class="bulk-row">
+          <input type="file" id="hours-file-input" accept=".xlsx,.xls,.csv">
+          <button type="button" class="primary" id="hours-apply-btn" disabled>Apply to equipment</button>
+        </div>
+        <div id="hours-preview"></div>
+      </div>
       <div class="panel role-admin-equip" id="eq-add-panel" style="display:none;">
         <h2>New equipment</h2>
         <form id="eq-form">
@@ -285,6 +299,7 @@
             <div class="field"><label>Location</label><input type="text" id="eq-location" placeholder="e.g. Building 3, Line 2"></div>
             <div class="field"><label>Criticality</label><select id="eq-criticality"><option>Standard</option><option>Important</option><option>Critical</option></select></div>
             <div class="field"><label>Current run hours (optional)</label><input type="number" id="eq-hours" min="0" step="1" placeholder="e.g. 4200"></div>
+            <div class="field"><label>Resource code (optional)</label><input type="text" id="eq-resource" placeholder="e.g. RM01"><div class="hint">SAP work-center/resource this equipment runs with — give every belt, motor, bearing etc. on the same line the same code so running hours from COOISPI apply to all of them at once.</div></div>
           </div>
           <div class="form-actions"><button type="submit" class="primary">Save equipment</button><button type="button" class="ghost" id="eq-cancel">Cancel</button></div>
         </form>
@@ -430,6 +445,7 @@
   // ====================================================================
   const SUPABASE_URL = 'https://xwmrjngktuaykwuriyct.supabase.co';
   const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inh3bXJqbmdrdHVheWt3dXJpeWN0Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODk0NjI5NTcsImV4cCI6MjEwNTAzODk1N30.KZ2QJQEvVox6g06yxayX00dDZpQKCgqmLYuwdI8mWwg';
+ 
   // ====================================================================
 
   const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
@@ -599,7 +615,8 @@
     const { error } = await sb.from('equipment').insert({
       tag: $('#eq-tag').value.trim(), name: $('#eq-name').value.trim(),
       location: $('#eq-location').value.trim(), criticality: $('#eq-criticality').value,
-      current_hours: $('#eq-hours').value ? parseFloat($('#eq-hours').value) : null
+      current_hours: $('#eq-hours').value ? parseFloat($('#eq-hours').value) : null,
+      resource_code: $('#eq-resource').value.trim() || null
     });
     if(error){ alert(error.message); return; }
     $('#eq-form').reset(); $('#eq-add-panel').style.display = 'none';
@@ -623,6 +640,7 @@
             <span class="meta">${esc(eq.location) || '—'}</span>
             <span class="spacer"></span>
             ${eq.current_hours != null ? `<span class="meta mono">${eq.current_hours} hrs</span>` : ''}
+            ${eq.resource_code ? `<span class="level-tag">${esc(eq.resource_code)}</span>` : ''}
             <span class="pill ${eq.criticality === 'Critical' ? 'overdue' : eq.criticality === 'Important' ? 'soon' : 'none'}">${esc(eq.criticality)}</span>
             ${comps.length ? statusPill(worst) : '<span class="meta">No components</span>'}
           </div>
@@ -702,10 +720,10 @@
   }
 
   // ---------------- BULK IMPORT (admin) ----------------
-  const BULK_HEADERS = ['Equipment Tag','Equipment Name','Location','Criticality','Current Hours','Component Type','Lubricant','Reservoir Capacity','Qty Per Service','Unit','Method','Frequency Basis (days or hours)','Frequency Value'];
+  const BULK_HEADERS = ['Equipment Tag','Equipment Name','Location','Criticality','Current Hours','Resource Code','Component Type','Lubricant','Reservoir Capacity','Qty Per Service','Unit','Method','Frequency Basis (days or hours)','Frequency Value'];
   let bulkRows = [];
   $('#bulk-template-btn').addEventListener('click', () => {
-    const example = ['PUMP-014','Feed Pump #2','Building 3, Line 2','Important','4200','Gearbox','ISO VG 68 gear oil','200','2.5','L','Oil top-off','days','30'];
+    const example = ['PUMP-014','Feed Pump #2','Building 3, Line 2','Important','4200','RM01','Gearbox','ISO VG 68 gear oil','200','2.5','L','Oil top-off','days','30'];
     const ws = XLSX.utils.aoa_to_sheet([BULK_HEADERS, example]);
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, 'Equipment');
@@ -751,7 +769,8 @@
           tag, name: String(row['Equipment Name'] || tag).trim(),
           location: String(row['Location'] || '').trim(),
           criticality: String(row['Criticality'] || 'Standard').trim() || 'Standard',
-          current_hours: row['Current Hours'] !== '' && row['Current Hours'] != null ? parseFloat(row['Current Hours']) : null
+          current_hours: row['Current Hours'] !== '' && row['Current Hours'] != null ? parseFloat(row['Current Hours']) : null,
+          resource_code: String(row['Resource Code'] || '').trim() || null
         }).select().single();
         if(error){ errors.push(`Row ${rowNum} (equipment ${tag}): ${error.message}`); continue; }
         eqId = data.id; tagToId[tag] = eqId; eqCreated++;
@@ -780,6 +799,100 @@
     $('#bulk-summary').textContent = summary;
     bulkRows = [];
     $('#bulk-file-input').value = '';
+    await loadAll(); render();
+  });
+
+  // ---------------- IMPORT RUNNING HOURS (COOISPI) ----------------
+  let hoursParsed = null; // { byResource: {code: hours}, periodFrom, periodTo }
+  function excelDateToISO(v){
+    if(v instanceof Date) return v.toISOString().slice(0,10);
+    if(typeof v === 'number'){
+      const d = new Date(Math.round((v - 25569) * 86400 * 1000));
+      return d.toISOString().slice(0,10);
+    }
+    return null;
+  }
+  function parseCooispi(rows, headerKeys){
+    // Find ILE group pairs: a "Unit/activity (...ILEnn...)" header and a
+    // matching "Activity to conf. ... (...ILEnn...)" header, for nn = 01..06.
+    const ileRe = /ILE\s*0*(\d+)/i;
+    const unitCols = {}, actCols = {};
+    headerKeys.forEach(h => {
+      const m = h.match(ileRe);
+      if(!m) return;
+      const n = m[1];
+      if(/unit\s*\/\s*activity/i.test(h)) unitCols[n] = h;
+      else if(/activity to conf/i.test(h)) actCols[n] = h;
+    });
+    const byResource = {};
+    let periodFrom = null, periodTo = null;
+    rows.forEach(row => {
+      const resource = String(row['Resource'] || '').trim();
+      if(!resource) return;
+      Object.keys(unitCols).forEach(n => {
+        const unit = String(row[unitCols[n]] || '').trim().toUpperCase();
+        if(unit !== 'HR') return;
+        const actCol = actCols[n];
+        if(!actCol) return;
+        const val = parseFloat(row[actCol]);
+        if(isNaN(val)) return;
+        byResource[resource] = (byResource[resource] || 0) + val;
+      });
+      const pd = excelDateToISO(row['Posting Date']);
+      if(pd){ if(!periodFrom || pd < periodFrom) periodFrom = pd; if(!periodTo || pd > periodTo) periodTo = pd; }
+    });
+    return { byResource, periodFrom, periodTo };
+  }
+  function equipmentByResource(code){ return state.equipment.filter(e => e.resource_code === code); }
+
+  $('#hours-file-input').addEventListener('change', (e) => {
+    const file = e.target.files[0];
+    hoursParsed = null;
+    $('#hours-apply-btn').disabled = true;
+    $('#hours-preview').innerHTML = '';
+    if(!file) return;
+    const reader = new FileReader();
+    reader.onload = (evt) => {
+      try{
+        const wb = XLSX.read(evt.target.result, { type: 'array', cellDates: true });
+        const sheet = wb.Sheets[wb.SheetNames[0]];
+        const rows = XLSX.utils.sheet_to_json(sheet, { defval: '' });
+        if(!rows.length){ $('#hours-preview').innerHTML = '<div class="hint">No rows found in that file.</div>'; return; }
+        const headerKeys = Object.keys(rows[0]);
+        hoursParsed = parseCooispi(rows, headerKeys);
+        const resources = Object.keys(hoursParsed.byResource);
+        if(!resources.length){ $('#hours-preview').innerHTML = '<div class="hint">No HR-unit activity found — check this is a COOISPI confirmation export with a Resource column.</div>'; return; }
+        $('#hours-preview').innerHTML = `
+          <div class="hint" style="margin:12px 0;">Period in file: ${hoursParsed.periodFrom ? fmtDate(hoursParsed.periodFrom) : '—'} to ${hoursParsed.periodTo ? fmtDate(hoursParsed.periodTo) : '—'}</div>
+          <div class="table-scroll"><table><thead><tr><th>Resource</th><th>Hours in file</th><th>Equipment tagged with this code</th></tr></thead><tbody>
+          ${resources.map(r => {
+            const eqs = equipmentByResource(r);
+            return `<tr><td class="mono">${esc(r)}</td><td>${hoursParsed.byResource[r].toFixed(1)}</td><td>${eqs.length ? eqs.map(e=>esc(e.tag)).join(', ') : '<span class="pill overdue">No equipment tagged — nothing will update</span>'}</td></tr>`;
+          }).join('')}
+          </tbody></table></div>`;
+        $('#hours-apply-btn').disabled = false;
+      }catch(err){
+        $('#hours-preview').innerHTML = '<div class="hint">Could not read that file: ' + esc(err.message) + '</div>';
+      }
+    };
+    reader.readAsArrayBuffer(file);
+  });
+  $('#hours-apply-btn').addEventListener('click', async () => {
+    if(!hoursParsed) return;
+    $('#hours-apply-btn').disabled = true;
+    const results = [];
+    for(const [resource, hours] of Object.entries(hoursParsed.byResource)){
+      if(!equipmentByResource(resource).length) continue; // nothing to update, skip silently
+      const { data, error } = await sb.rpc('apply_resource_hours', {
+        p_resource_code: resource, p_hours: hours,
+        p_period_from: hoursParsed.periodFrom, p_period_to: hoursParsed.periodTo
+      });
+      if(error) results.push(`${resource}: ${error.message}`);
+      else results.push(`${resource}: +${hours.toFixed(1)} hrs applied to ${data} equipment`);
+    }
+    $('#hours-preview').innerHTML += `<div class="hint" style="margin-top:14px; white-space:pre-line;">${esc(results.join('\n'))}</div>`;
+    hoursParsed = null;
+    $('#hours-file-input').value = '';
     await loadAll(); render();
   });
 
